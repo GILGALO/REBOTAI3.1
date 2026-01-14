@@ -173,7 +173,18 @@ export async function registerRoutes(
   app.patch(api.settings.update.path, async (req, res) => {
     try {
       const input = api.settings.update.input.parse(req.body);
+      
       const settings = await storage.updateSettings(input);
+      
+      // If telegram was just enabled, let's try to send a test message if we have credentials
+      if (input.telegramEnabled) {
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        const chatId = process.env.TELEGRAM_CHAT_ID;
+        if (token && chatId) {
+          await sendTelegramMessage("<b>🔔 Telegram Notifications Enabled</b>\nYou will now receive M5 signals here.");
+        }
+      }
+      
       res.json(settings);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -222,15 +233,22 @@ export async function registerRoutes(
   // Seed initial data if empty
   (async () => {
     try {
-      const signals = await storage.getSignals(1);
-      if (signals.length === 0) {
+      const signalsCount = await storage.getSignals(1);
+      if (signalsCount.length === 0) {
         console.log("Seeding initial signals...");
         const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
+        
         // Parallel seeding for speed
-        await Promise.all(pairs.map(async (pair) => {
-          const signalData = await generateRealSignal(pair, false);
-          return storage.createSignal(signalData);
-        }));
+        const initialSignals = await Promise.all(pairs.map(pair => generateRealSignal(pair, false)));
+        for (const signalData of initialSignals) {
+          const signal = await storage.createSignal(signalData);
+          // Auto-send seeds if bot is enabled
+          const settings = await storage.getSettings();
+          if (settings.telegramEnabled) {
+            await sendTelegramMessage(formatSignalForTelegram(signal));
+            await storage.markSignalSent(signal.id);
+          }
+        }
         console.log("Seeding complete.");
       }
     } catch (err) {

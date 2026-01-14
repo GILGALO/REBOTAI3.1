@@ -1,9 +1,10 @@
 export async function sendTelegramMessage(message: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
+  // Use env var directly if available, otherwise check settings
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
-    console.warn("[Telegram] Bot token or Chat ID not configured");
+    console.warn("[Telegram] Bot token or Chat ID not configured in ENV");
     return;
   }
 
