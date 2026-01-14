@@ -4,12 +4,30 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { getForexCandles } from "./services/finnhub";
+import { sendTelegramMessage } from "./services/telegram";
 
 // Helper to get formatted time in EAT (UTC+3)
 function formatEAT(date: Date): string {
   const eatDate = new Date(date.getTime() + (3 * 60 * 60 * 1000));
   return eatDate.getUTCHours().toString().padStart(2, '0') + ':' + 
          eatDate.getUTCMinutes().toString().padStart(2, '0') + ' EAT';
+}
+
+function formatSignalForTelegram(signal: any): string {
+  const emoji = signal.action === "BUY/CALL" ? "🟢" : "🔴";
+  return `
+<b>${emoji} NEW SIGNAL: ${signal.pair}</b>
+
+<b>Action:</b> ${signal.action}
+<b>Entry:</b> ${signal.entryPrice}
+<b>Stop Loss:</b> ${signal.stopLoss}
+<b>Take Profit:</b> ${signal.takeProfit}
+<b>Confidence:</b> ${signal.confidence}%
+
+<i>${signal.reasoning}</i>
+
+📊 <i>Sent via AI M5 Trading Bot</i>
+  `.trim();
 }
 
 // Logic aligned to M5 with Finnhub data
@@ -95,7 +113,13 @@ export async function registerRoutes(
     try {
       const input = api.signals.create.input.parse(req.body);
       const signal = await storage.createSignal(input);
-      // TODO: Send to Telegram here if enabled
+      
+      const settings = await storage.getSettings();
+      if (settings.telegramEnabled) {
+        await sendTelegramMessage(formatSignalForTelegram(signal));
+        await storage.markSignalSent(signal.id);
+      }
+      
       res.status(201).json(signal);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -113,6 +137,13 @@ export async function registerRoutes(
       const { pair } = req.body;
       const realSignal = await generateRealSignal(pair, true);
       const signal = await storage.createSignal(realSignal);
+      
+      const settings = await storage.getSettings();
+      if (settings.telegramEnabled) {
+        await sendTelegramMessage(formatSignalForTelegram(signal));
+        await storage.markSignalSent(signal.id);
+      }
+
       res.status(200).json(signal);
     } catch (err) {
       res.status(500).json({ message: "Failed to generate signal" });
@@ -158,7 +189,13 @@ export async function registerRoutes(
         if (Math.random() > 0.3) { 
           const pair = settings.activePairs[Math.floor(Math.random() * settings.activePairs.length)];
           const realSignal = await generateRealSignal(pair, false);
-          await storage.createSignal(realSignal);
+          const signal = await storage.createSignal(realSignal);
+          
+          if (settings.telegramEnabled) {
+            await sendTelegramMessage(formatSignalForTelegram(signal));
+            await storage.markSignalSent(signal.id);
+          }
+          
           console.log(`[Auto Mode] Generated signal for ${pair} at M5 boundary`);
         }
       }
