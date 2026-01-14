@@ -14,19 +14,32 @@ function formatEAT(date: Date): string {
 }
 
 function formatSignalForTelegram(signal: any): string {
-  const emoji = signal.action === "BUY/CALL" ? "🟢" : "🔴";
+  const isBuy = signal.action.includes("BUY");
+  const emoji = isBuy ? "🟢" : "🔴";
+  const actionIcon = isBuy ? "📈" : "📉";
+  const confidenceEmoji = signal.confidence >= 90 ? "🔥" : "⚡";
+  
+  // Parse start/end time from reasoning
+  const startTime = signal.reasoning?.match(/⏰ Start Time: (.*?)\n/)?.[1] || "N/A";
+  const endTime = signal.reasoning?.match(/🏁 End Time: (.*?)\n/)?.[1] || "N/A";
+  const cleanReasoning = signal.reasoning?.split('\n').slice(2).join('\n') || signal.reasoning;
+
   return `
 <b>${emoji} NEW SIGNAL: ${signal.pair}</b>
 
-<b>Action:</b> ${signal.action}
-<b>Entry:</b> ${signal.entryPrice}
-<b>Stop Loss:</b> ${signal.stopLoss}
-<b>Take Profit:</b> ${signal.takeProfit}
-<b>Confidence:</b> ${signal.confidence}%
+<b>Action:</b> ${signal.action} ${actionIcon}
+<b>🎯 Confidence:</b> ${signal.confidence}% ${confidenceEmoji}
 
-<i>${signal.reasoning}</i>
+<b>📍 Session:</b> ${signal.session}
+<b>⏰ Start Time:</b> <code>${startTime}</code>
+<b>🏁 End Time:</b> <code>${endTime}</code>
 
-📊 <i>Sent via AI M5 Trading Bot</i>
+<b>🎯 Take Profit:</b> <code>${signal.takeProfit}</code>
+<b>🛡️ Stop Loss:</b> <code>${signal.stopLoss}</code>
+
+<i>${cleanReasoning}</i>
+
+📊 <i>REPLIT AI M5 Trading Bot</i>
   `.trim();
 }
 
