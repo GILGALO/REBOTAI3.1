@@ -230,19 +230,16 @@ export async function registerRoutes(
     }
   }, 60000); // Check every minute
 
-  // Seed initial data if empty
-  (async () => {
+  // Background seed: non-blocking startup
+  setImmediate(async () => {
     try {
       const signalsCount = await storage.getSignals(1);
       if (signalsCount.length === 0) {
         console.log("Seeding initial signals...");
         const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
-        
-        // Parallel seeding for speed
         const initialSignals = await Promise.all(pairs.map(pair => generateRealSignal(pair, false)));
         for (const signalData of initialSignals) {
           const signal = await storage.createSignal(signalData);
-          // Auto-send seeds if bot is enabled
           const settings = await storage.getSettings();
           if (settings.telegramEnabled) {
             await sendTelegramMessage(formatSignalForTelegram(signal));
@@ -254,7 +251,7 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Seeding failed:", err);
     }
-  })();
+  });
 
   return httpServer;
 }
