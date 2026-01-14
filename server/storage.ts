@@ -6,6 +6,7 @@ export interface IStorage {
   // Signals
   getSignals(limit?: number, pair?: string): Promise<Signal[]>;
   createSignal(signal: InsertSignal): Promise<Signal>;
+  markSignalSent(id: number): Promise<void>;
   
   // Settings
   getSettings(): Promise<Settings>;
@@ -26,6 +27,12 @@ export class DatabaseStorage implements IStorage {
     return newSignal;
   }
 
+  async markSignalSent(id: number): Promise<void> {
+    await db.update(signals)
+      .set({ sentToTelegram: true })
+      .where(eq(signals.id, id));
+  }
+
   async getSettings(): Promise<Settings> {
     const [existingSettings] = await db.select().from(settings).limit(1);
     if (existingSettings) return existingSettings;
@@ -42,7 +49,7 @@ export class DatabaseStorage implements IStorage {
   async updateSettings(updates: Partial<InsertSettings>): Promise<Settings> {
     const current = await this.getSettings();
     const [updated] = await db.update(settings)
-      .set(updates)
+      .set(updates as any)
       .where(eq(settings.id, current.id))
       .returning();
     return updated;
