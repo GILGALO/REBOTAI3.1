@@ -75,13 +75,15 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
   const sl = action === "BUY/CALL" ? entry - (spread * 10) : entry + (spread * 10);
   const tp = action === "BUY/CALL" ? entry + (spread * 20) : entry - (spread * 20);
 
-  // Align to M5 interval
+  // Align to NEXT M5 interval if generating manual signal
   const now = new Date();
   const start = new Date(now);
   start.setUTCSeconds(0, 0);
+  
   const minutes = start.getUTCMinutes();
-  const alignedMinutes = Math.floor(minutes / 5) * 5;
-  start.setUTCMinutes(alignedMinutes);
+  // If we are already at a boundary, it's fine, otherwise move to next 5-min block
+  const nextAlignedMinutes = Math.ceil((minutes + 0.1) / 5) * 5; 
+  start.setUTCMinutes(nextAlignedMinutes);
   
   const end = new Date(start);
   end.setUTCMinutes(start.getUTCMinutes() + 5);
