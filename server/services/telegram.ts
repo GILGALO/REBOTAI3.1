@@ -1,10 +1,9 @@
 export async function sendTelegramMessage(message: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  // Use env var directly if available, otherwise check settings
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
-    console.warn("[Telegram] Bot token or Chat ID not configured in ENV");
+    console.warn("[Telegram] Bot token or Chat ID not configured in ENV. Message skipped.");
     return;
   }
 
@@ -15,15 +14,18 @@ export async function sendTelegramMessage(message: string) {
       body: JSON.stringify({
         chat_id: chatId,
         text: message,
-        parse_mode: 'HTML'
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
       })
     });
 
     if (!response.ok) {
       const error = await response.json();
-      console.error("[Telegram] Error sending message:", error);
+      console.error("[Telegram] API Error:", error);
+    } else {
+      console.log("[Telegram] Message sent successfully to", chatId);
     }
   } catch (err) {
-    console.error("[Telegram] Failed to send message:", err);
+    console.error("[Telegram] Connection Failed:", err);
   }
 }

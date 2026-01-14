@@ -181,7 +181,7 @@ export async function registerRoutes(
         const token = process.env.TELEGRAM_BOT_TOKEN;
         const chatId = process.env.TELEGRAM_CHAT_ID;
         if (token && chatId) {
-          await sendTelegramMessage("<b>🔔 Telegram Notifications Enabled</b>\nYou will now receive M5 signals here.");
+          await sendTelegramMessage("🤖 <b>TradeBot.ai Pro Signals</b>\n\n✅ Telegram notifications have been successfully enabled!\n\nYou will now receive real-time M5 signals here.");
         }
       }
       
