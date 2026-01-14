@@ -226,10 +226,11 @@ export async function registerRoutes(
       if (signals.length === 0) {
         console.log("Seeding initial signals...");
         const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
-        for (const pair of pairs) {
-           const signalData = await generateRealSignal(pair, false);
-           await storage.createSignal(signalData);
-        }
+        // Parallel seeding for speed
+        await Promise.all(pairs.map(async (pair) => {
+          const signalData = await generateRealSignal(pair, false);
+          return storage.createSignal(signalData);
+        }));
         console.log("Seeding complete.");
       }
     } catch (err) {
