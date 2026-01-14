@@ -4,15 +4,33 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 
-// Mock Signal Generation Logic
+// Helper to get formatted time in EAT (UTC+3)
+function formatEAT(date: Date): string {
+  const eatDate = new Date(date.getTime() + (3 * 60 * 60 * 1000));
+  return eatDate.getUTCHours().toString().padStart(2, '0') + ':' + 
+         eatDate.getUTCMinutes().toString().padStart(2, '0') + ' EAT';
+}
+
+// Mock Signal Generation Logic aligned to M5
 function generateMockSignal(pair: string, isManual: boolean = false) {
-  const actions = ["BUY", "SELL"];
+  const actions = ["BUY/CALL", "SELL/PUT"];
   const action = actions[Math.floor(Math.random() * actions.length)];
-  const basePrice = pair.includes("JPY") ? 145.00 : 1.0800; // Rough baseline
+  const basePrice = pair.includes("JPY") ? 145.00 : 1.0800;
   const entry = basePrice + (Math.random() * 0.05 - 0.025);
   
-  const sl = action === "BUY" ? entry - 0.0050 : entry + 0.0050;
-  const tp = action === "BUY" ? entry + 0.0100 : entry - 0.0100;
+  const sl = action.startsWith("BUY") ? entry - 0.0050 : entry + 0.0050;
+  const tp = action.startsWith("BUY") ? entry + 0.0100 : entry - 0.0100;
+
+  // Align to M5 interval
+  const now = new Date();
+  const start = new Date(now);
+  start.setUTCSeconds(0, 0);
+  const minutes = start.getUTCMinutes();
+  const alignedMinutes = Math.floor(minutes / 5) * 5;
+  start.setUTCMinutes(alignedMinutes);
+  
+  const end = new Date(start);
+  end.setUTCMinutes(start.getUTCMinutes() + 5);
 
   const strategies = ["RSI Divergence", "MACD Crossover", "Bollinger Band Breakout", "Support/Resistance Bounce"];
   const reasoning = `${strategies[Math.floor(Math.random() * strategies.length)]} detected on M5 timeframe.`;
@@ -23,9 +41,9 @@ function generateMockSignal(pair: string, isManual: boolean = false) {
     entryPrice: entry.toFixed(4),
     stopLoss: sl.toFixed(4),
     takeProfit: tp.toFixed(4),
-    confidence: Math.floor(Math.random() * (95 - 70) + 70), // 70-95%
-    session: getMarketSession(),
-    reasoning,
+    confidence: Math.floor(Math.random() * (99 - 85) + 85), // Higher confidence for REPLIT AI feel
+    session: getMarketSession() + " Session",
+    reasoning: `⏰ Start Time: ${formatEAT(start)}\n🏁 End Time: ${formatEAT(end)}\n${reasoning}`,
     isManual,
     sentToTelegram: false,
   };
@@ -108,23 +126,26 @@ export async function registerRoutes(
   });
 
   // === BACKGROUND JOB (AUTO MODE) ===
-  // Check every minute if we should generate a signal
+  // Check every minute if we should generate a signal at the start of M5
   setInterval(async () => {
     try {
+      const now = new Date();
+      if (now.getUTCMinutes() % 5 !== 0) return; // Only trigger exactly at :00, :05, etc.
+
       const settings = await storage.getSettings();
       if (settings.isAutoMode && settings.activePairs && settings.activePairs.length > 0) {
-        // Random chance to generate signal to avoid spamming every minute
-        if (Math.random() > 0.7) { 
+        // High probability but not guaranteed to keep it realistic
+        if (Math.random() > 0.3) { 
           const pair = settings.activePairs[Math.floor(Math.random() * settings.activePairs.length)];
           const mockSignal = generateMockSignal(pair, false);
           await storage.createSignal(mockSignal);
-          console.log(`[Auto Mode] Generated signal for ${pair}`);
+          console.log(`[Auto Mode] Generated signal for ${pair} at M5 boundary`);
         }
       }
     } catch (err) {
       console.error("[Auto Mode] Error:", err);
     }
-  }, 60000); // Check every minute (simulating M5 candles check)
+  }, 60000); // Check every minute
 
   // Seed initial data if empty
   (async () => {
