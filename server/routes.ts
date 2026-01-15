@@ -50,6 +50,16 @@ function calculateSMA(prices: number[], period: number): number {
   return sum / period;
 }
 
+function calculateEMA(prices: number[], period: number): number {
+  if (prices.length === 0) return 0;
+  const k = 2 / (period + 1);
+  let ema = prices[0];
+  for (let i = 1; i < prices.length; i++) {
+    ema = (prices[i] * k) + (ema * (1 - k));
+  }
+  return ema;
+}
+
 function calculateRSI(prices: number[], period: number = 14): number {
   if (prices.length <= period) return 50;
   let gains = 0;
@@ -60,50 +70,119 @@ function calculateRSI(prices: number[], period: number = 14): number {
     else losses -= diff;
   }
   const rs = gains / losses;
+  if (losses === 0) return 100;
   return 100 - (100 / (1 + rs));
 }
 
-// Logic aligned to M5 with Finnhub data and enhanced indicators
+function calculateATR(candles: any, period: number = 14): number {
+  if (!candles.h || candles.h.length < period) return 0.0010;
+  let trSum = 0;
+  for (let i = candles.h.length - period; i < candles.h.length; i++) {
+    const high = candles.h[i];
+    const low = candles.l[i];
+    const prevClose = candles.c[i - 1] || low;
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trSum += tr;
+  }
+  return trSum / period;
+}
+
+// Logic aligned to M5 with Finnhub data and professional indicator suite
 async function generateRealSignal(pair: string, isManual: boolean = false) {
   let entryPrice = pair.includes("JPY") ? 145.00 : 1.0800;
   let action: "BUY/CALL" | "SELL/PUT" = "BUY/CALL";
-  let reasoning = "Technical analysis detected on M5 timeframe.";
+  let reasoning = "Analyzing market structure...";
   let confidence = 85;
 
   try {
     const candles = await getForexCandles(pair);
-    if (candles && candles.c && candles.c.length >= 20) {
+    if (candles && candles.c && candles.c.length >= 50) {
       const prices = candles.c;
       entryPrice = prices[prices.length - 1];
       
       const rsi = calculateRSI(prices, 14);
-      const sma20 = calculateSMA(prices, 20);
-      const sma10 = calculateSMA(prices, 10);
-      const currentPrice = prices[prices.length - 1];
+      const ema20 = calculateEMA(prices, 20);
+      const ema50 = calculateEMA(prices, 50);
+      const ema200 = calculateEMA(prices, 200) || ema50; // Fallback if not enough data
+      const atr = calculateATR(candles, 14);
       
-      // Multi-indicator strategy: RSI + SMA Crossover
-      const isOverbought = rsi > 70;
-      const isOversold = rsi < 30;
-      const isBullishCross = sma10 > sma20;
+      const isBullishTrend = entryPrice > ema200;
+      const isBearishTrend = entryPrice < ema200;
+      const isBullishCross = ema20 > ema50;
+      const isBearishCross = ema20 < ema50;
       
-      if (isOversold || (isBullishCross && rsi < 60)) {
+      // Strict Professional Logic: Triple Confluence
+      // 1. Trend Filter (EMA 200)
+      // 2. Momentum (EMA 20/50 Cross)
+      // 3. Overbought/Oversold (RSI)
+      
+      if (isBullishTrend && isBullishCross && rsi < 65) {
         action = "BUY/CALL";
-        confidence = Math.min(98, 85 + (isOversold ? 10 : 5) + (isBullishCross ? 3 : 0));
-        reasoning = `Confluence detected: ${isOversold ? "RSI Oversold" : "Bullish EMA Cross"} with RSI at ${rsi.toFixed(1)}.`;
-      } else if (isOverbought || (!isBullishCross && rsi > 40)) {
+        confidence = Math.min(99, 85 + (rsi < 40 ? 10 : 5) + (isBullishTrend ? 4 : 0));
+        reasoning = `Triple Confluence: Price above EMA200, Bullish EMA Cross, and RSI supporting at ${rsi.toFixed(1)}.`;
+      } else if (isBearishTrend && isBearishCross && rsi > 35) {
         action = "SELL/PUT";
-        confidence = Math.min(98, 85 + (isOverbought ? 10 : 5) + (!isBullishCross ? 3 : 0));
-        reasoning = `Confluence detected: ${isOverbought ? "RSI Overbought" : "Bearish EMA Cross"} with RSI at ${rsi.toFixed(1)}.`;
+        confidence = Math.min(99, 85 + (rsi > 60 ? 10 : 5) + (isBearishTrend ? 4 : 0));
+        reasoning = `Triple Confluence: Price below EMA200, Bearish EMA Cross, and RSI supporting at ${rsi.toFixed(1)}.`;
+      } else {
+        // High-Quality Filter: If no clear trend confluence, check for extreme reversals
+        if (rsi < 25) {
+          action = "BUY/CALL";
+          confidence = 88;
+          reasoning = `Extreme Oversold: RSI at ${rsi.toFixed(1)} suggests imminent reversal.`;
+        } else if (rsi > 75) {
+          action = "SELL/PUT";
+          confidence = 88;
+          reasoning = `Extreme Overbought: RSI at ${rsi.toFixed(1)} suggests imminent reversal.`;
+        } else {
+          // Default to trend-following if nothing else, but lower confidence
+          action = entryPrice > ema50 ? "BUY/CALL" : "SELL/PUT";
+          confidence = 82;
+          reasoning = `Trend-following based on EMA50. Waiting for stronger confluence.`;
+        }
       }
+
+      const spread = atr * 1.5; // Volatility-adjusted SL/TP
+      const entry = entryPrice;
+      const sl = action === "BUY/CALL" ? entry - (spread * 1.5) : entry + (spread * 1.5);
+      const tp = action === "BUY/CALL" ? entry + (spread * 3) : entry - (spread * 3);
+
+      return {
+        pair,
+        action,
+        entryPrice: entry.toFixed(pair.includes("JPY") ? 3 : 5),
+        stopLoss: sl.toFixed(pair.includes("JPY") ? 3 : 5),
+        takeProfit: tp.toFixed(pair.includes("JPY") ? 3 : 5),
+        confidence,
+        session: getMarketSession() + " Session",
+        reasoning: `⏰ M5 Boundary Analysis\n📊 ATR Volatility: ${(atr * 10000).toFixed(1)} pips\n${reasoning}`,
+        isManual,
+        sentToTelegram: false,
+      };
     }
+    
+    // Default fallback if logic fails to return early
+    const spread = pair.includes("JPY") ? 0.05 : 0.0005;
+    const sl = action === "BUY/CALL" ? entryPrice - (spread * 15) : entryPrice + (spread * 15);
+    const tp = action === "BUY/CALL" ? entryPrice + (spread * 30) : entryPrice - (spread * 30);
+
+    return {
+      pair,
+      action,
+      entryPrice: entryPrice.toFixed(pair.includes("JPY") ? 3 : 5),
+      stopLoss: sl.toFixed(pair.includes("JPY") ? 3 : 5),
+      takeProfit: tp.toFixed(pair.includes("JPY") ? 3 : 5),
+      confidence,
+      session: getMarketSession() + " Session",
+      reasoning: `⏰ M5 Boundary Analysis\n${reasoning}`,
+      isManual,
+      sentToTelegram: false,
+    };
   } catch (err) {
-    console.error(`[Finnhub] Error fetching for ${pair}, falling back to mock price:`, err);
+    console.error(`[Finnhub] Error fetching for ${pair}:`, err);
+    throw err;
   }
-  
-  const entry = entryPrice;
-  const spread = pair.includes("JPY") ? 0.05 : 0.0005;
-  const sl = action === "BUY/CALL" ? entry - (spread * 15) : entry + (spread * 15);
-  const tp = action === "BUY/CALL" ? entry + (spread * 30) : entry - (spread * 30);
+}
 
   // Align to NEXT M5 interval if generating manual signal
   const now = new Date();
