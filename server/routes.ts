@@ -449,7 +449,7 @@ export async function registerRoutes(
       const signalsCount = await storage.getSignals(1);
       if (signalsCount.length === 0) {
         console.log("Seeding initial signals...");
-        const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"];
+        const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "USD/CHF", "NZD/USD", "EUR/GBP", "EUR/JPY", "GBP/JPY"];
         const initialSignals = await Promise.all(pairs.map(pair => generateRealSignal(pair, false)));
         for (const signalData of initialSignals) {
           const signal = await storage.createSignal(signalData);

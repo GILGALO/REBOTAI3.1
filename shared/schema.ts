@@ -24,7 +24,7 @@ export const settings = pgTable("settings", {
   isAutoMode: boolean("is_auto_mode").default(false),
   telegramEnabled: boolean("telegram_enabled").default(false),
   activePairs: jsonb("active_pairs").$type<string[]>().default([
-    "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"
+    "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "USD/CHF", "NZD/USD", "EUR/GBP", "EUR/JPY", "GBP/JPY"
   ]),
   telegramChatId: text("telegram_chat_id"), // Optional: allow setting via UI
   // Note: Bot Token usually goes in ENV, but can be here for user ease if strictly requested
