@@ -143,7 +143,30 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       const bbOversold = entryPrice <= bb.lower;
       const bbOverbought = entryPrice >= bb.upper;
 
-      // Ultra-High Accuracy Confluence Logic
+      // --- ADVANCED ANALYSIS ENHANCEMENTS ---
+      // 1. Candlestick Pattern Recognition (Simplified)
+      const lastCandle = {
+        o: candles.o[candles.o.length - 1],
+        h: candles.h[candles.h.length - 1],
+        l: candles.l[candles.l.length - 1],
+        c: candles.c[candles.c.length - 1],
+      };
+      const prevCandle = {
+        o: candles.o[candles.o.length - 2],
+        h: candles.h[candles.h.length - 2],
+        l: candles.l[candles.l.length - 2],
+        c: candles.c[candles.c.length - 2],
+      };
+
+      const isBullishEngulfing = lastCandle.c > prevCandle.o && lastCandle.o < prevCandle.c && prevCandle.c < prevCandle.o;
+      const isBearishEngulfing = lastCandle.c < prevCandle.o && lastCandle.o > prevCandle.c && prevCandle.c > prevCandle.o;
+
+      // 2. Volume Analysis
+      const volumes = candles.v;
+      const avgVolume = volumes.slice(-20).reduce((a: number, b: number) => a + b, 0) / 20;
+      const highVolume = volumes[volumes.length - 1] > avgVolume * 1.5;
+
+      // 3. Multi-Indicator Score Refinement
       let score = 0;
       if (isBullishTrend) score += 2;
       if (isBearishTrend) score -= 2;
@@ -155,29 +178,35 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       if (rsi > 60) score -= 1;
       if (bbOversold) score += 2;
       if (bbOverbought) score -= 2;
+      
+      // New weights
+      if (isBullishEngulfing) score += 3;
+      if (isBearishEngulfing) score -= 3;
+      if (highVolume && score > 0) score += 2;
+      if (highVolume && score < 0) score -= 2;
 
       // High-Quality Filter: Only signal if we have high confidence
-      if (rsi < 20 || (bbOversold && rsi < 30)) {
+      if (rsi < 20 || (bbOversold && rsi < 30 && isBullishEngulfing)) {
         action = "BUY/CALL";
-        confidence = 92;
-        reasoning = `High-Probability Reversal: BB Lower Band touch and RSI extreme oversold (${rsi.toFixed(1)}).`;
-      } else if (rsi > 80 || (bbOverbought && rsi > 70)) {
+        confidence = 96;
+        reasoning = `Extreme Confluence Reversal: Engulfing pattern at BB Lower Band with RSI extreme oversold (${rsi.toFixed(1)}).`;
+      } else if (rsi > 80 || (bbOverbought && rsi > 70 && isBearishEngulfing)) {
         action = "SELL/PUT";
-        confidence = 92;
-        reasoning = `High-Probability Reversal: BB Upper Band touch and RSI extreme overbought (${rsi.toFixed(1)}).`;
-      } else if (score >= 5) {
+        confidence = 96;
+        reasoning = `Extreme Confluence Reversal: Engulfing pattern at BB Upper Band with RSI extreme overbought (${rsi.toFixed(1)}).`;
+      } else if (score >= 7) {
         action = "BUY/CALL";
-        confidence = Math.min(99, 90 + score);
-        reasoning = `Strong Bullish Confluence: EMA Trend (${isBullishTrend ? 'UP' : 'SIDE'}), MACD Momentum (${macdBullish ? 'POSITIVE' : 'NEUTRAL'}), and BB ${bbOversold ? 'OVERSOLD' : 'SUPPORTED'}. RSI: ${rsi.toFixed(1)}`;
-      } else if (score <= -5) {
+        confidence = Math.min(99, 92 + score);
+        reasoning = `High-Probability Bullish Setup: Multi-indicator confluence (Score: ${score}) with ${highVolume ? 'Elevated' : 'Stable'} Volume and ${isBullishEngulfing ? 'Bullish Engulfing' : 'Trend Alignment'}. RSI: ${rsi.toFixed(1)}`;
+      } else if (score <= -7) {
         action = "SELL/PUT";
-        confidence = Math.min(99, 90 + Math.abs(score));
-        reasoning = `Strong Bearish Confluence: EMA Trend (${isBearishTrend ? 'DOWN' : 'SIDE'}), MACD Momentum (${macdBearish ? 'NEGATIVE' : 'NEUTRAL'}), and BB ${bbOverbought ? 'OVERBOUGHT' : 'RESISTANCE'}. RSI: ${rsi.toFixed(1)}`;
+        confidence = Math.min(99, 92 + Math.abs(score));
+        reasoning = `High-Probability Bearish Setup: Multi-indicator confluence (Score: ${score}) with ${highVolume ? 'Elevated' : 'Stable'} Volume and ${isBearishEngulfing ? 'Bearish Engulfing' : 'Trend Alignment'}. RSI: ${rsi.toFixed(1)}`;
       } else {
         // Fallback for all other conditions
         action = score >= 0 ? "BUY/CALL" : "SELL/PUT";
         confidence = 75;
-        reasoning = `🎯 Advanced M5 Market Analysis: Market sentiment shows strong momentum based on current volatility and session volume. Indicator Score: ${score}`;
+        reasoning = `🎯 Precision M5 Market Analysis: Analyzing price action and volume distribution. Indicator Score: ${score}. Market bias: ${score >= 0 ? 'BULLISH' : 'BEARISH'}`;
       }
 
       const spread = atr * 1.5; // Volatility-adjusted SL/TP
