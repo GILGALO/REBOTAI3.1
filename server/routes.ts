@@ -156,7 +156,16 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       if (bbOversold) score += 2;
       if (bbOverbought) score -= 2;
 
-      if (score >= 5) {
+      // High-Quality Filter: Only signal if we have high confidence
+      if (rsi < 20 || (bbOversold && rsi < 30)) {
+        action = "BUY/CALL";
+        confidence = 92;
+        reasoning = `High-Probability Reversal: BB Lower Band touch and RSI extreme oversold (${rsi.toFixed(1)}).`;
+      } else if (rsi > 80 || (bbOverbought && rsi > 70)) {
+        action = "SELL/PUT";
+        confidence = 92;
+        reasoning = `High-Probability Reversal: BB Upper Band touch and RSI extreme overbought (${rsi.toFixed(1)}).`;
+      } else if (score >= 5) {
         action = "BUY/CALL";
         confidence = Math.min(99, 90 + score);
         reasoning = `Strong Bullish Confluence: EMA Trend (${isBullishTrend ? 'UP' : 'SIDE'}), MACD Momentum (${macdBullish ? 'POSITIVE' : 'NEUTRAL'}), and BB ${bbOversold ? 'OVERSOLD' : 'SUPPORTED'}. RSI: ${rsi.toFixed(1)}`;
@@ -166,19 +175,9 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
         reasoning = `Strong Bearish Confluence: EMA Trend (${isBearishTrend ? 'DOWN' : 'SIDE'}), MACD Momentum (${macdBearish ? 'NEGATIVE' : 'NEUTRAL'}), and BB ${bbOverbought ? 'OVERBOUGHT' : 'RESISTANCE'}. RSI: ${rsi.toFixed(1)}`;
       } else {
         // High-Quality Filter: Only signal if we have high confidence
-        if (rsi < 20 || (bbOversold && rsi < 30)) {
-          action = "BUY/CALL";
-          confidence = 92;
-          reasoning = `High-Probability Reversal: BB Lower Band touch and RSI extreme oversold (${rsi.toFixed(1)}).`;
-        } else if (rsi > 80 || (bbOverbought && rsi > 70)) {
-          action = "SELL/PUT";
-          confidence = 92;
-          reasoning = `High-Probability Reversal: BB Upper Band touch and RSI extreme overbought (${rsi.toFixed(1)}).`;
-        } else {
-          action = score >= 0 ? "BUY/CALL" : "SELL/PUT";
-          confidence = 75;
-          reasoning = `Neutral Market: Waiting for stronger indicator alignment. Current Score: ${score}`;
-        }
+        action = score >= 0 ? "BUY/CALL" : "SELL/PUT";
+        confidence = 75;
+        reasoning = `Neutral Market: Waiting for stronger indicator alignment. Current Score: ${score}`;
       }
 
       const spread = atr * 1.5; // Volatility-adjusted SL/TP

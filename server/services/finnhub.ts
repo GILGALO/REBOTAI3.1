@@ -21,29 +21,35 @@ export async function getForexCandles(symbol: string) {
   const to = Math.floor(Date.now() / 1000);
   const from = to - (60 * 60); // Last hour
 
-  try {
-    const response = await fetch(
-      `https://finnhub.io/api/v1/forex/candle?symbol=OANDA:${symbol.replace("/", "_")}&resolution=5&from=${from}&to=${to}&token=${apiKey}`
-    );
+  const symbols = [
+    `FX_IDC:${symbol.replace("/", "")}`,
+    `OANDA:${symbol.replace("/", "_")}`,
+    `FOREXCOM:${symbol.replace("/", "_")}`,
+    `SAXO:${symbol.replace("/", "_")}`,
+    `ICM:${symbol.replace("/", "")}`
+  ];
 
-    if (!response.ok) {
-      if (response.status === 403) {
-        console.warn(`[Finnhub] API Key Forbidden for OANDA:${symbol}. Falling back to FX_IDC.`);
-        const fallbackResponse = await fetch(
-          `https://finnhub.io/api/v1/forex/candle?symbol=FX_IDC:${symbol.replace("/", "")}&resolution=5&from=${from}&to=${to}&token=${apiKey}`
-        );
-        if (fallbackResponse.ok) return await fallbackResponse.json();
+  for (const s of symbols) {
+    try {
+      console.log(`[Finnhub] Attempting fetch from source: ${s}`);
+      const url = `https://finnhub.io/api/v1/forex/candle?symbol=${s}&resolution=5&from=${from}&to=${to}&token=${apiKey}`;
+      const response = await fetch(url);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.s === "ok" && data.c && data.c.length > 5) {
+          console.log(`[Finnhub] Successfully fetched data for ${s}`);
+          return data;
+        } else {
+          console.warn(`[Finnhub] Source ${s} returned status: ${data.s}. URL: ${url}`);
+        }
+      } else {
+        console.warn(`[Finnhub] Source ${s} failed with status: ${response.status}. URL: ${url}`);
       }
-      throw new Error(`Finnhub API error: ${response.statusText}`);
+    } catch (err) {
+      console.warn(`[Finnhub] Exception during fetch from ${s}:`, err);
     }
-
-    const data = await response.json();
-    if (data.s !== "ok") {
-      throw new Error(`Finnhub returned status: ${data.s}`);
-    }
-    return data;
-  } catch (err) {
-    console.error(`[Finnhub] Candle fetch failed:`, err);
-    throw err;
   }
+
+  throw new Error(`Failed to fetch forex candles for ${symbol} from all sources`);
 }
