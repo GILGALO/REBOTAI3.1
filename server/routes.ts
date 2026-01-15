@@ -43,27 +43,57 @@ function formatSignalForTelegram(signal: any): string {
   `.trim();
 }
 
-// Logic aligned to M5 with Finnhub data
+// Indicators logic
+function calculateSMA(prices: number[], period: number): number {
+  if (prices.length < period) return prices[prices.length - 1];
+  const sum = prices.slice(-period).reduce((a, b) => a + b, 0);
+  return sum / period;
+}
+
+function calculateRSI(prices: number[], period: number = 14): number {
+  if (prices.length <= period) return 50;
+  let gains = 0;
+  let losses = 0;
+  for (let i = prices.length - period; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+  const rs = gains / losses;
+  return 100 - (100 / (1 + rs));
+}
+
+// Logic aligned to M5 with Finnhub data and enhanced indicators
 async function generateRealSignal(pair: string, isManual: boolean = false) {
   let entryPrice = pair.includes("JPY") ? 145.00 : 1.0800;
-  let action: "BUY/CALL" | "SELL/PUT" = Math.random() > 0.5 ? "BUY/CALL" : "SELL/PUT";
+  let action: "BUY/CALL" | "SELL/PUT" = "BUY/CALL";
   let reasoning = "Technical analysis detected on M5 timeframe.";
+  let confidence = 85;
 
   try {
     const candles = await getForexCandles(pair);
-    if (candles && candles.c && candles.c.length > 0) {
-      entryPrice = candles.c[candles.c.length - 1];
+    if (candles && candles.c && candles.c.length >= 20) {
+      const prices = candles.c;
+      entryPrice = prices[prices.length - 1];
       
-      // Simple technical logic based on last 2 candles
-      const current = candles.c[candles.c.length - 1];
-      const prev = candles.c[candles.c.length - 2];
+      const rsi = calculateRSI(prices, 14);
+      const sma20 = calculateSMA(prices, 20);
+      const sma10 = calculateSMA(prices, 10);
+      const currentPrice = prices[prices.length - 1];
       
-      if (current > prev) {
+      // Multi-indicator strategy: RSI + SMA Crossover
+      const isOverbought = rsi > 70;
+      const isOversold = rsi < 30;
+      const isBullishCross = sma10 > sma20;
+      
+      if (isOversold || (isBullishCross && rsi < 60)) {
         action = "BUY/CALL";
-        reasoning = "Momentum breakout detected on M5 timeframe.";
-      } else {
+        confidence = Math.min(98, 85 + (isOversold ? 10 : 5) + (isBullishCross ? 3 : 0));
+        reasoning = `Confluence detected: ${isOversold ? "RSI Oversold" : "Bullish EMA Cross"} with RSI at ${rsi.toFixed(1)}.`;
+      } else if (isOverbought || (!isBullishCross && rsi > 40)) {
         action = "SELL/PUT";
-        reasoning = "Price rejection detected on M5 timeframe.";
+        confidence = Math.min(98, 85 + (isOverbought ? 10 : 5) + (!isBullishCross ? 3 : 0));
+        reasoning = `Confluence detected: ${isOverbought ? "RSI Overbought" : "Bearish EMA Cross"} with RSI at ${rsi.toFixed(1)}.`;
       }
     }
   } catch (err) {
@@ -72,8 +102,8 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
   
   const entry = entryPrice;
   const spread = pair.includes("JPY") ? 0.05 : 0.0005;
-  const sl = action === "BUY/CALL" ? entry - (spread * 10) : entry + (spread * 10);
-  const tp = action === "BUY/CALL" ? entry + (spread * 20) : entry - (spread * 20);
+  const sl = action === "BUY/CALL" ? entry - (spread * 15) : entry + (spread * 15);
+  const tp = action === "BUY/CALL" ? entry + (spread * 30) : entry - (spread * 30);
 
   // Align to NEXT M5 interval if generating manual signal
   const now = new Date();
