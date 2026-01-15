@@ -22,6 +22,7 @@ export async function getForexCandles(symbol: string) {
   const from = to - (60 * 60 * 4); // Last 4 hours for deeper analysis
 
   const symbols = [
+    `TV_FOREX:${symbol.replace("/", "")}`,
     `FX_IDC:${symbol.replace("/", "")}`,
     `FOREXCOM:${symbol.replace("/", "_")}`,
     `OANDA:${symbol.replace("/", "_")}`,
