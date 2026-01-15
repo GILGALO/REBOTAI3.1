@@ -179,6 +179,21 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       const stoch = calculateStochastic(candles);
       const adx = calculateADX(candles);
 
+      // --- SAFETY FILTERS ---
+      // 1. Bollinger Band "Overextension" Filter
+      const upperDist = Math.abs(entryPrice - bb.upper);
+      const lowerDist = Math.abs(entryPrice - bb.lower);
+      const bbRange = bb.upper - bb.lower;
+      const isOverextendedUp = entryPrice >= bb.upper - (bbRange * 0.05);
+      const isOverextendedDown = entryPrice <= bb.lower + (bbRange * 0.05);
+
+      // 2. Stochastic Exhaustion Filter
+      const isStochOverbought = stoch.k > 80;
+      const isStochOversold = stoch.k < 20;
+
+      // 3. ADX Trend Strength Filter (Minimum strength for Premium signals)
+      const hasStrongTrend = adx > 25;
+
       // AI-Enhanced Analysis
       let aiAnalysis: { action: "BUY" | "SELL", confidence: number, reasoning: string } | null = null;
       try {
@@ -311,34 +326,49 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       if (score > 0 && isBearishTrend) score -= 6; 
       if (score < 0 && isBullishTrend) score += 6;
 
+      // --- NEW: SAFETY OVERRIDES ---
+      let safetyReason = "";
+      if (score > 0 && (isOverextendedUp || isStochOverbought)) {
+        score -= 8; // Penalty for buying at the absolute peak
+        safetyReason = " [Safety: Buying into Resistance/Overbought]";
+      }
+      if (score < 0 && (isOverextendedDown || isStochOversold)) {
+        score += 8; // Penalty for selling at the absolute bottom
+        safetyReason = " [Safety: Selling into Support/Oversold]";
+      }
+      if (Math.abs(score) > 10 && !hasStrongTrend) {
+        score *= 0.7; // Reduce confidence if trend is weak/ranging
+        safetyReason += " [Safety: Weak Trend Strength]";
+      }
+
       // High-Quality Filter: Only signal if we have high confidence
-      if (rsi < 25 && bbOversold && (isBullishEngulfing || isBullishPin) && isBullishTrend && nearSupport) {
+      if (rsi < 25 && bbOversold && (isBullishEngulfing || isBullishPin) && isBullishTrend && nearSupport && !isOverextendedUp) {
         action = "BUY/CALL";
         confidence = 99;
-        reasoning = `A+ Institutional Grade Long: Bullish rejection/engulfing at major support with RSI extreme oversold and trend alignment.`;
-      } else if (rsi > 75 && bbOverbought && (isBearishEngulfing || isBearishPin) && isBearishTrend && nearResistance) {
+        reasoning = `A+ Institutional Grade Long: Bullish rejection/engulfing at major support with RSI extreme oversold and trend alignment.${safetyReason}`;
+      } else if (rsi > 75 && bbOverbought && (isBearishEngulfing || isBearishPin) && isBearishTrend && nearResistance && !isOverextendedDown) {
         action = "SELL/PUT";
         confidence = 99;
-        reasoning = `A+ Institutional Grade Short: Bearish rejection/engulfing at major resistance with RSI extreme overbought and trend alignment.`;
-      } else if (score >= 12 && isBullishTrend && h1TrendUp) { 
+        reasoning = `A+ Institutional Grade Short: Bearish rejection/engulfing at major resistance with RSI extreme overbought and trend alignment.${safetyReason}`;
+      } else if (score >= 12 && isBullishTrend && h1TrendUp && !isOverextendedUp) { 
         action = "BUY/CALL";
         confidence = Math.min(99, 95 + (score / 2));
-        reasoning = `Premium Trend Alignment: M5/H1 confluence (Score: ${score}) with Volume Surge and Price Action Confirmation.`;
-      } else if (score <= -12 && isBearishTrend && h1TrendDown) {
+        reasoning = `Premium Trend Alignment: M5/H1 confluence (Score: ${score.toFixed(1)}) with Volume Surge and Price Action Confirmation.${safetyReason}`;
+      } else if (score <= -12 && isBearishTrend && h1TrendDown && !isOverextendedDown) {
         action = "SELL/PUT";
         confidence = Math.min(99, 95 + (Math.abs(score) / 2));
-        reasoning = `Premium Trend Alignment: M5/H1 confluence (Score: ${score}) with Volume Surge and Price Action Confirmation.`;
+        reasoning = `Premium Trend Alignment: M5/H1 confluence (Score: ${score.toFixed(1)}) with Volume Surge and Price Action Confirmation.${safetyReason}`;
       } else {
         // Significantly lower confidence for non-perfect setups
         action = score >= 0 ? "BUY/CALL" : "SELL/PUT";
         confidence = Math.min(85, Math.abs(score) * 5); 
-        reasoning = `🎯 Market Flow Analysis: Standard price action setup. Indicator Score: ${score.toFixed(1)}. ${aiAnalysis ? 'AI Analysis integrated.' : 'Pure technical analysis.'}`;
+        reasoning = `🎯 Market Flow Analysis: Standard price action setup. Indicator Score: ${score.toFixed(1)}. ${aiAnalysis ? 'AI Analysis integrated.' : 'Pure technical analysis.'}${safetyReason}`;
       }
 
-      const spread = atr * 1.5; // Volatility-adjusted SL/TP
+      const spread = atr * 1.8; // Increased spread padding to avoid liquidity sweeps
       const entry = entryPrice;
-      const sl = action === "BUY/CALL" ? entry - (spread * 1.5) : entry + (spread * 1.5);
-      const tp = action === "BUY/CALL" ? entry + (spread * 3) : entry - (spread * 3);
+      const sl = action === "BUY/CALL" ? entry - (spread * 2.0) : entry + (spread * 2.0); // Deeper SL to survive noise
+      const tp = action === "BUY/CALL" ? entry + (spread * 3.5) : entry - (spread * 3.5); // Better R:R ratio
 
       // Align to NEXT M5 interval
       const now = new Date();
