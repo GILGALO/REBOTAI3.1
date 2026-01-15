@@ -37,18 +37,13 @@ export async function getForexCandles(symbol: string) {
       throw new Error(`Finnhub API error: ${response.statusText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    if (data.s !== "ok") {
+      throw new Error(`Finnhub returned status: ${data.s}`);
+    }
+    return data;
   } catch (err) {
     console.error(`[Finnhub] Candle fetch failed:`, err);
-    // Return mock data for demo purposes if API fails completely to avoid "FAILED TO GENERATE SIGNAL"
-    return {
-      c: Array.from({length: 50}, () => (symbol.includes("JPY") ? 145 : 1.08) + Math.random() * 0.01),
-      h: Array.from({length: 50}, () => (symbol.includes("JPY") ? 146 : 1.09) + Math.random() * 0.01),
-      l: Array.from({length: 50}, () => (symbol.includes("JPY") ? 144 : 1.07) + Math.random() * 0.01),
-      o: Array.from({length: 50}, () => (symbol.includes("JPY") ? 145 : 1.08) + Math.random() * 0.01),
-      s: "ok",
-      t: Array.from({length: 50}, (_, i) => to - (50 - i) * 300),
-      v: Array.from({length: 50}, () => Math.floor(Math.random() * 1000))
-    };
+    throw err;
   }
 }
