@@ -147,6 +147,18 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       const sl = action === "BUY/CALL" ? entry - (spread * 1.5) : entry + (spread * 1.5);
       const tp = action === "BUY/CALL" ? entry + (spread * 3) : entry - (spread * 3);
 
+      // Align to NEXT M5 interval
+      const now = new Date();
+      const start = new Date(now);
+      start.setUTCSeconds(0, 0);
+      
+      const minutes = start.getUTCMinutes();
+      const nextAlignedMinutes = Math.ceil((minutes + 0.1) / 5) * 5; 
+      start.setUTCMinutes(nextAlignedMinutes);
+      
+      const end = new Date(start);
+      end.setUTCMinutes(start.getUTCMinutes() + 5);
+
       return {
         pair,
         action,
@@ -155,12 +167,12 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
         takeProfit: tp.toFixed(pair.includes("JPY") ? 3 : 5),
         confidence,
         session: getMarketSession() + " Session",
-        reasoning: `⏰ M5 Boundary Analysis\n📊 ATR Volatility: ${(atr * 10000).toFixed(1)} pips\n${reasoning}`,
+        reasoning: `⏰ Start Time: ${formatEAT(start)}\n🏁 End Time: ${formatEAT(end)}\n📊 ATR Volatility: ${(atr * 10000).toFixed(1)} pips\n${reasoning}`,
         isManual,
         sentToTelegram: false,
       };
     }
-    
+
     // Default fallback if logic fails to return early
     const spread = pair.includes("JPY") ? 0.05 : 0.0005;
     const sl = action === "BUY/CALL" ? entryPrice - (spread * 15) : entryPrice + (spread * 15);
@@ -182,33 +194,6 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
     console.error(`[Finnhub] Error fetching for ${pair}:`, err);
     throw err;
   }
-}
-
-  // Align to NEXT M5 interval if generating manual signal
-  const now = new Date();
-  const start = new Date(now);
-  start.setUTCSeconds(0, 0);
-  
-  const minutes = start.getUTCMinutes();
-  // If we are already at a boundary, it's fine, otherwise move to next 5-min block
-  const nextAlignedMinutes = Math.ceil((minutes + 0.1) / 5) * 5; 
-  start.setUTCMinutes(nextAlignedMinutes);
-  
-  const end = new Date(start);
-  end.setUTCMinutes(start.getUTCMinutes() + 5);
-
-  return {
-    pair,
-    action,
-    entryPrice: entry.toFixed(pair.includes("JPY") ? 3 : 5),
-    stopLoss: sl.toFixed(pair.includes("JPY") ? 3 : 5),
-    takeProfit: tp.toFixed(pair.includes("JPY") ? 3 : 5),
-    confidence: Math.floor(Math.random() * (99 - 88) + 88),
-    session: getMarketSession() + " Session",
-    reasoning: `⏰ Start Time: ${formatEAT(start)}\n🏁 End Time: ${formatEAT(end)}\n${reasoning}`,
-    isManual,
-    sentToTelegram: false,
-  };
 }
 
 function getMarketSession(): "Asian" | "London" | "New York" | "Closed" {
