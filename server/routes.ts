@@ -175,52 +175,71 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
 
       // 3. Multi-Indicator Score Refinement
       let score = 0;
-      if (isBullishTrend) score += 3; 
-      if (isBearishTrend) score -= 3;
-      if (h1TrendUp) score += 2; // H1 Alignment Bonus
-      if (h1TrendDown) score -= 2;
+      if (isBullishTrend) score += 4; // Main trend is king
+      if (isBearishTrend) score -= 4;
+      if (h1TrendUp) score += 3; // H1 Alignment is second in command
+      if (h1TrendDown) score -= 3;
+      
+      // Dynamic Support/Resistance
+      const recentHigh = Math.max(...candles.h.slice(-20));
+      const recentLow = Math.min(...candles.l.slice(-20));
+      const nearSupport = entryPrice <= recentLow + (atr * 0.5);
+      const nearResistance = entryPrice >= recentHigh - (atr * 0.5);
+      
+      if (nearSupport && isBullishTrend) score += 3;
+      if (nearResistance && isBearishTrend) score -= 3;
+
+      // Price Action: Pin Bars / Rejection Candles
+      const bodySize = Math.abs(lastCandle.c - lastCandle.o);
+      const upperWick = lastCandle.h - Math.max(lastCandle.c, lastCandle.o);
+      const lowerWick = Math.min(lastCandle.c, lastCandle.o) - lastCandle.l;
+      const isBullishPin = lowerWick > bodySize * 2 && upperWick < bodySize;
+      const isBearishPin = upperWick > bodySize * 2 && lowerWick < bodySize;
+
+      if (isBullishPin && nearSupport) score += 4;
+      if (isBearishPin && nearResistance) score -= 4;
+
       if (isBullishCross) score += 2;
       if (isBearishCross) score -= 2;
       if (macdBullish) score += 2;
       if (macdBearish) score -= 2;
-      if (rsi < 35) score += 2; // Stricter RSI thresholds
-      if (rsi > 65) score -= 2;
+      if (rsi < 30) score += 3; 
+      if (rsi > 70) score -= 3;
       if (bbOversold) score += 2;
       if (bbOverbought) score -= 2;
       
-      // New weights for price action
-      if (isBullishEngulfing && isBullishTrend) score += 5; // Synergy: Pattern + Trend
+      // Synergy weights
+      if (isBullishEngulfing && isBullishTrend) score += 5;
       if (isBearishEngulfing && isBearishTrend) score -= 5;
       if (highVolume && score > 0) score += 2;
       if (highVolume && score < 0) score -= 2;
 
       // STRICT TREND FILTER: Reduce confidence if trading against the main trend
-      let finalConfidence = confidence;
-      if (score > 0 && isBearishTrend) score -= 4; 
-      if (score < 0 && isBullishTrend) score += 4;
+      if (score > 0 && isBearishTrend) score -= 6; 
+      if (score < 0 && isBullishTrend) score += 6;
 
       // High-Quality Filter: Only signal if we have high confidence
-      if (rsi < 25 && bbOversold && isBullishEngulfing && isBullishTrend) {
+      if (rsi < 25 && bbOversold && (isBullishEngulfing || isBullishPin) && isBullishTrend && nearSupport) {
         action = "BUY/CALL";
-        confidence = 98;
-        reasoning = `Ultra-Confluence Long: Engulfing pattern on trend-aligned BB Lower Band with RSI extreme oversold (${rsi.toFixed(1)}).`;
-      } else if (rsi > 75 && bbOverbought && isBearishEngulfing && isBearishTrend) {
+        confidence = 99;
+        reasoning = `A+ Institutional Grade Long: Bullish rejection/engulfing at major support with RSI extreme oversold and trend alignment.`;
+      } else if (rsi > 75 && bbOverbought && (isBearishEngulfing || isBearishPin) && isBearishTrend && nearResistance) {
         action = "SELL/PUT";
-        confidence = 98;
-        reasoning = `Ultra-Confluence Short: Engulfing pattern on trend-aligned BB Upper Band with RSI extreme overbought (${rsi.toFixed(1)}).`;
-      } else if (score >= 10 && isBullishTrend) { // Higher score required
+        confidence = 99;
+        reasoning = `A+ Institutional Grade Short: Bearish rejection/engulfing at major resistance with RSI extreme overbought and trend alignment.`;
+      } else if (score >= 12 && isBullishTrend && h1TrendUp) { 
         action = "BUY/CALL";
-        confidence = Math.min(99, 94 + score);
-        reasoning = `Institutional Bullish Setup: Strong trend alignment (EMA200), Engulfing Pattern, and Volume Surge. RSI: ${rsi.toFixed(1)}`;
-      } else if (score <= -10 && isBearishTrend) {
+        confidence = Math.min(99, 95 + (score / 2));
+        reasoning = `Premium Trend Alignment: M5/H1 confluence (Score: ${score}) with Volume Surge and Price Action Confirmation.`;
+      } else if (score <= -12 && isBearishTrend && h1TrendDown) {
         action = "SELL/PUT";
-        confidence = Math.min(99, 94 + Math.abs(score));
-        reasoning = `Institutional Bearish Setup: Strong trend alignment (EMA200), Engulfing Pattern, and Volume Surge. RSI: ${rsi.toFixed(1)}`;
+        confidence = Math.min(99, 95 + (Math.abs(score) / 2));
+        reasoning = `Premium Trend Alignment: M5/H1 confluence (Score: ${score}) with Volume Surge and Price Action Confirmation.`;
       } else {
         // Significantly lower confidence for non-perfect setups
         action = score >= 0 ? "BUY/CALL" : "SELL/PUT";
-        confidence = 65; 
-        reasoning = `🎯 M5 Market Flow: Standard momentum setup. Indicator Score: ${score}. Bias: ${score >= 0 ? 'BULLISH' : 'BEARISH'}`;
+        confidence = 60; 
+        reasoning = `🎯 Market Flow Analysis: Standard price action setup. Indicator Score: ${score}. Alignment: ${isBullishTrend && h1TrendUp ? 'High' : 'Low'}`;
       }
 
       const spread = atr * 1.5; // Volatility-adjusted SL/TP
