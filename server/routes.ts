@@ -112,6 +112,50 @@ function calculateBollingerBands(prices: number[], period: number = 20, stdDev: 
   };
 }
 
+function calculateStochastic(candles: any, period: number = 14): { k: number, d: number } {
+  const closes = candles.c.slice(-period);
+  const highs = candles.h.slice(-period);
+  const lows = candles.l.slice(-period);
+  
+  const currentClose = closes[closes.length - 1];
+  const lowestLow = Math.min(...lows);
+  const highestHigh = Math.max(...highs);
+  
+  const k = ((currentClose - lowestLow) / (highestHigh - lowestLow)) * 100;
+  // Simple 3-period SMA for D (simplified)
+  const d = k; // In a full impl we'd average last 3 Ks
+  return { k, d };
+}
+
+function calculateADX(candles: any, period: number = 14): number {
+  // Simplified ADX approximation
+  if (candles.c.length < period * 2) return 25;
+  let trSum = 0;
+  let dmPlusSum = 0;
+  let dmMinusSum = 0;
+  
+  for (let i = candles.c.length - period; i < candles.c.length; i++) {
+    const high = candles.h[i];
+    const low = candles.l[i];
+    const prevHigh = candles.h[i-1];
+    const prevLow = candles.l[i-1];
+    const prevClose = candles.c[i-1];
+    
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trSum += tr;
+    
+    const moveUp = high - prevHigh;
+    const moveDown = prevLow - low;
+    
+    if (moveUp > moveDown && moveUp > 0) dmPlusSum += moveUp;
+    if (moveDown > moveUp && moveDown > 0) dmMinusSum += moveDown;
+  }
+  
+  const diPlus = (dmPlusSum / trSum) * 100;
+  const diMinus = (dmMinusSum / trSum) * 100;
+  return Math.abs((diPlus - diMinus) / (diPlus + diMinus)) * 100;
+}
+
 // Logic aligned to M5 with Finnhub data and professional indicator suite
 async function generateRealSignal(pair: string, isManual: boolean = false) {
   let entryPrice = pair.includes("JPY") ? 145.00 : 1.0800;
@@ -132,6 +176,8 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       const atr = calculateATR(candles, 14);
       const macd = calculateMACD(prices);
       const bb = calculateBollingerBands(prices);
+      const stoch = calculateStochastic(candles);
+      const adx = calculateADX(candles);
 
       // AI-Enhanced Analysis
       let aiAnalysis: { action: "BUY" | "SELL", confidence: number, reasoning: string } | null = null;
@@ -146,6 +192,8 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
           macdHist: macd.hist.toFixed(5),
           bbUpper: bb.upper.toFixed(5),
           bbLower: bb.lower.toFixed(5),
+          stochK: stoch.k.toFixed(2),
+          adx: adx.toFixed(2),
           currentPrice: entryPrice.toFixed(5)
         };
 
@@ -156,6 +204,8 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
         ATR: ${indicators.atr} pips
         MACD: ${indicators.macd} (Hist: ${indicators.macdHist})
         BB: ${indicators.bbLower} - ${indicators.bbUpper}
+        Stochastic %K: ${indicators.stochK}
+        ADX (Trend Strength): ${indicators.adx}
         
         Return JSON: {"action": "BUY"|"SELL", "confidence": 0-100, "reasoning": "string"}`;
 
