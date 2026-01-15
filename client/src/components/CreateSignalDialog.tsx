@@ -86,6 +86,11 @@ export function CreateSignalDialog() {
                       <SelectItem value="USD/JPY">USD/JPY</SelectItem>
                       <SelectItem value="AUD/USD">AUD/USD</SelectItem>
                       <SelectItem value="USD/CAD">USD/CAD</SelectItem>
+                      <SelectItem value="USD/CHF">USD/CHF</SelectItem>
+                      <SelectItem value="NZD/USD">NZD/USD</SelectItem>
+                      <SelectItem value="EUR/GBP">EUR/GBP</SelectItem>
+                      <SelectItem value="EUR/JPY">EUR/JPY</SelectItem>
+                      <SelectItem value="GBP/JPY">GBP/JPY</SelectItem>
                       <SelectItem value="XAU/USD">XAU/USD (Gold)</SelectItem>
                     </SelectContent>
                   </Select>
