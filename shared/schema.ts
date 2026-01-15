@@ -4,6 +4,8 @@ import { z } from "zod";
 
 // === TABLE DEFINITIONS ===
 
+export * from "./models/chat";
+
 export const signals = pgTable("signals", {
   id: serial("id").primaryKey(),
   pair: text("pair").notNull(), // e.g., "EUR/USD"

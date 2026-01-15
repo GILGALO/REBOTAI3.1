@@ -5,6 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { getForexCandles } from "./services/finnhub";
 import { sendTelegramMessage } from "./services/telegram";
+import { generateChatCompletion } from "./services/openai";
 
 // Helper to get formatted time in EAT (UTC+3)
 function formatEAT(date: Date): string {
@@ -131,6 +132,42 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       const atr = calculateATR(candles, 14);
       const macd = calculateMACD(prices);
       const bb = calculateBollingerBands(prices);
+
+      // AI-Enhanced Analysis
+      let aiAnalysis: { action: "BUY" | "SELL", confidence: number, reasoning: string } | null = null;
+      try {
+        const indicators = {
+          rsi: rsi.toFixed(2),
+          ema20: ema20.toFixed(5),
+          ema50: ema50.toFixed(5),
+          ema200: ema200.toFixed(5),
+          atr: (atr * 10000).toFixed(1),
+          macd: macd.macd.toFixed(5),
+          macdHist: macd.hist.toFixed(5),
+          bbUpper: bb.upper.toFixed(5),
+          bbLower: bb.lower.toFixed(5),
+          currentPrice: entryPrice.toFixed(5)
+        };
+
+        const prompt = `Analyze M5 Forex data for ${pair}:
+        Price: ${indicators.currentPrice}
+        RSI: ${indicators.rsi}
+        EMA (20/50/200): ${indicators.ema20}, ${indicators.ema50}, ${indicators.ema200}
+        ATR: ${indicators.atr} pips
+        MACD: ${indicators.macd} (Hist: ${indicators.macdHist})
+        BB: ${indicators.bbLower} - ${indicators.bbUpper}
+        
+        Return JSON: {"action": "BUY"|"SELL", "confidence": 0-100, "reasoning": "string"}`;
+
+        const response = await generateChatCompletion([
+          { role: "system", content: "You are a professional forex scalper." },
+          { role: "user", content: prompt }
+        ], { response_format: { type: "json_object" } });
+
+        aiAnalysis = JSON.parse(response.choices[0].message.content || "null");
+      } catch (aiErr) {
+        console.error("[AI Analysis] Error:", aiErr);
+      }
       
       const isBullishTrend = entryPrice > ema200;
       const isBearishTrend = entryPrice < ema200;
@@ -214,6 +251,12 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       if (highVolume && score > 0) score += 2;
       if (highVolume && score < 0) score -= 2;
 
+      // Integrate AI Score
+      if (aiAnalysis) {
+        if (aiAnalysis.action === "BUY") score += (aiAnalysis.confidence / 10);
+        else score -= (aiAnalysis.confidence / 10);
+      }
+
       // STRICT TREND FILTER: Reduce confidence if trading against the main trend
       if (score > 0 && isBearishTrend) score -= 6; 
       if (score < 0 && isBullishTrend) score += 6;
@@ -238,8 +281,8 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       } else {
         // Significantly lower confidence for non-perfect setups
         action = score >= 0 ? "BUY/CALL" : "SELL/PUT";
-        confidence = 60; 
-        reasoning = `🎯 Market Flow Analysis: Standard price action setup. Indicator Score: ${score}. Alignment: ${isBullishTrend && h1TrendUp ? 'High' : 'Low'}`;
+        confidence = Math.min(85, Math.abs(score) * 5); 
+        reasoning = `🎯 Market Flow Analysis: Standard price action setup. Indicator Score: ${score.toFixed(1)}. ${aiAnalysis ? 'AI Analysis integrated.' : 'Pure technical analysis.'}`;
       }
 
       const spread = atr * 1.5; // Volatility-adjusted SL/TP
