@@ -156,6 +156,18 @@ function calculateADX(candles: any, period: number = 14): number {
   return Math.abs((diPlus - diMinus) / (diPlus + diMinus)) * 100;
 }
 
+function calculateDonchian(candles: any, period: number = 20): { upper: number, lower: number, middle: number } {
+  const highs = candles.h.slice(-period);
+  const lows = candles.l.slice(-period);
+  const upper = Math.max(...highs);
+  const lower = Math.min(...lows);
+  return {
+    upper,
+    lower,
+    middle: (upper + lower) / 2
+  };
+}
+
 // Logic aligned to M5 with Finnhub data and professional indicator suite
 async function generateRealSignal(pair: string, isManual: boolean = false) {
   let entryPrice = pair.includes("JPY") ? 145.00 : 1.0800;
@@ -178,6 +190,7 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       const bb = calculateBollingerBands(prices);
       const stoch = calculateStochastic(candles);
       const adx = calculateADX(candles);
+      const donchian = calculateDonchian(candles);
 
       // --- SAFETY FILTERS ---
       // 1. Bollinger Band "Overextension" Filter
@@ -187,12 +200,20 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       const isOverextendedUp = entryPrice >= bb.upper - (bbRange * 0.05);
       const isOverextendedDown = entryPrice <= bb.lower + (bbRange * 0.05);
 
-      // 2. Stochastic Exhaustion Filter
+      // 2. Donchian "Ceiling/Floor" Filter (Breakout Verification)
+      const isAtDonchianHigh = entryPrice >= donchian.upper - (atr * 0.2);
+      const isAtDonchianLow = entryPrice <= donchian.lower + (atr * 0.2);
+
+      // 3. Stochastic Exhaustion Filter
       const isStochOverbought = stoch.k > 80;
       const isStochOversold = stoch.k < 20;
 
-      // 3. ADX Trend Strength Filter (Minimum strength for Premium signals)
+      // 4. ADX Trend Strength Filter (Minimum strength for Premium signals)
       const hasStrongTrend = adx > 25;
+
+      // 5. Volatility Expansion Filter
+      const prevAtr = calculateATR({ ...candles, h: candles.h.slice(0, -1), l: candles.l.slice(0, -1), c: candles.c.slice(0, -1) }, 14);
+      const volatilityExpanding = atr > prevAtr;
 
       // AI-Enhanced Analysis
       let aiAnalysis: { action: "BUY" | "SELL", confidence: number, reasoning: string } | null = null;
@@ -207,8 +228,11 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
           macdHist: macd.hist.toFixed(5),
           bbUpper: bb.upper.toFixed(5),
           bbLower: bb.lower.toFixed(5),
+          donchianUpper: donchian.upper.toFixed(5),
+          donchianLower: donchian.lower.toFixed(5),
           stochK: stoch.k.toFixed(2),
           adx: adx.toFixed(2),
+          volatilityExpanding,
           currentPrice: entryPrice.toFixed(5)
         };
 
@@ -216,11 +240,12 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
         Price: ${indicators.currentPrice}
         RSI: ${indicators.rsi}
         EMA (20/50/200): ${indicators.ema20}, ${indicators.ema50}, ${indicators.ema200}
-        ATR: ${indicators.atr} pips
+        ATR: ${indicators.atr} pips (Expanding: ${indicators.volatilityExpanding})
         MACD: ${indicators.macd} (Hist: ${indicators.macdHist})
         BB: ${indicators.bbLower} - ${indicators.bbUpper}
+        Donchian: ${indicators.donchianLower} - ${indicators.donchianUpper}
         Stochastic %K: ${indicators.stochK}
-        ADX (Trend Strength): ${indicators.adx}
+        ADX: ${indicators.adx}
         
         Return JSON: {"action": "BUY"|"SELL", "confidence": 0-100, "reasoning": "string"}`;
 
