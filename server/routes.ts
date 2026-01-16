@@ -365,35 +365,39 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       if (score > 0 && isBearishTrend) score -= 10; 
       if (score < 0 && isBullishTrend) score += 10;
 
-      // --- SAFETY OVERRIDES ---
+      // --- NEW: SAFETY OVERRIDES ---
       let safetyReason = "";
-      if (score > 0 && (isOverextendedUp || isStochOverbought)) {
-        score -= 8;
-        safetyReason = " [Safety: Buying Resistance/Overbought]";
+      if (score > 0 && (isOverextendedUp || isStochOverbought || isAtDonchianHigh)) {
+        score -= 10; // Penalty for buying at absolute multi-candle peaks
+        safetyReason = " [Safety: Extreme Overextension/Resistance]";
       }
-      if (score < 0 && (isOverextendedDown || isStochOversold)) {
-        score += 8;
-        safetyReason = " [Safety: Selling Support/Oversold]";
+      if (score < 0 && (isOverextendedDown || isStochOversold || isAtDonchianLow)) {
+        score += 10; // Penalty for selling at absolute multi-candle bottoms
+        safetyReason = " [Safety: Extreme Overextension/Support]";
       }
       if (Math.abs(score) > 10 && !hasStrongTrend) {
-        score *= 0.6; // Trend is king, don't trust signals in chop
-        safetyReason += " [Safety: Low ADX/Chop]";
+        score *= 0.6; // Heavy penalty for weak trend
+        safetyReason += " [Safety: Weak Trend Strength]";
+      }
+      if (Math.abs(score) > 10 && !volatilityExpanding) {
+        score *= 0.8; // Penalty for low volatility consolidation
+        safetyReason += " [Safety: Low Volatility]";
       }
 
       // High-Quality Filter: Only signal if we have high confidence
-      if (score >= 18 && isBullishTrend && h1TrendUp && nearSupport && (isBullishPin || isBullishEngulfing)) {
+      if (score >= 18 && isBullishTrend && h1TrendUp && nearSupport && (isBullishPin || isBullishEngulfing) && !isOverextendedUp) {
         action = "BUY/CALL";
         confidence = 99;
         reasoning = `👑 ULTIMATE A+ INSTITUTIONAL LONG: Divergence detected at Major Fractal Support. Max synergy between Price Action, H1 Trend, Volume, and Momentum.${safetyReason}`;
-      } else if (score <= -18 && isBearishTrend && h1TrendDown && nearResistance && (isBearishPin || isBearishEngulfing)) {
+      } else if (score <= -18 && isBearishTrend && h1TrendDown && nearResistance && (isBearishPin || isBearishEngulfing) && !isOverextendedDown) {
         action = "SELL/PUT";
         confidence = 99;
         reasoning = `👑 ULTIMATE A+ INSTITUTIONAL SHORT: Divergence detected at Major Fractal Resistance. Max synergy between Price Action, H1 Trend, Volume, and Momentum.${safetyReason}`;
-      } else if (score >= 12 && isBullishTrend && h1TrendUp) { 
+      } else if (score >= 12 && isBullishTrend && h1TrendUp && !isOverextendedUp) { 
         action = "BUY/CALL";
         confidence = 94;
         reasoning = `🔥 ELITE TREND LONG: Multi-timeframe trend alignment (Score: ${score.toFixed(1)}) with Volume surge and Price Action confirmation.${safetyReason}`;
-      } else if (score <= -12 && isBearishTrend && h1TrendDown) {
+      } else if (score <= -12 && isBearishTrend && h1TrendDown && !isOverextendedDown) {
         action = "SELL/PUT";
         confidence = 94;
         reasoning = `🔥 ELITE TREND SHORT: Multi-timeframe trend alignment (Score: ${score.toFixed(1)}) with Volume surge and Price Action confirmation.${safetyReason}`;
@@ -407,8 +411,8 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
       const spread = atr * 2.0; // Dynamic padding for noise
       const entry = entryPrice;
       // SL/TP based on market structure (Fractal Low/High)
-      const sl = action === "BUY/CALL" ? Math.min(entry - (spread * 1.5), recentLow - (atr * 0.5)) : Math.max(entry + (spread * 1.5), recentHigh + (atr * 0.5));
-      const tp = action === "BUY/CALL" ? entry + (spread * 4.0) : entry - (spread * 4.0); // 1:2+ R:R ratio
+      const sl = action === "BUY/CALL" ? Math.min(entry - (spread * 2.0), recentLow - (atr * 0.8)) : Math.max(entry + (spread * 2.0), recentHigh + (atr * 0.8));
+      const tp = action === "BUY/CALL" ? entry + (spread * 4.5) : entry - (spread * 4.5); // 1:2.2+ R:R ratio
 
       // Align to NEXT M5 interval
       const now = new Date();
