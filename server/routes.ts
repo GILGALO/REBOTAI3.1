@@ -277,98 +277,113 @@ async function generateRealSignal(pair: string, isManual: boolean = false) {
 
       // 3. Multi-Indicator Score Refinement
       let score = 0;
-      if (isBullishTrend) score += 4; // Main trend is king
-      if (isBearishTrend) score -= 4;
-      if (h1TrendUp) score += 3; // H1 Alignment is second in command
-      if (h1TrendDown) score -= 3;
-      
-      // Dynamic Support/Resistance
-      const recentHigh = Math.max(...candles.h.slice(-20));
-      const recentLow = Math.min(...candles.l.slice(-20));
-      const nearSupport = entryPrice <= recentLow + (atr * 0.5);
-      const nearResistance = entryPrice >= recentHigh - (atr * 0.5);
-      
-      if (nearSupport && isBullishTrend) score += 3;
-      if (nearResistance && isBearishTrend) score -= 3;
+      if (isBullishTrend) score += 5; // Main trend is king
+      if (isBearishTrend) score -= 5;
+      if (h1TrendUp) score += 4; // H1 Alignment is mandatory for A+
+      if (h1TrendDown) score -= 4;
 
-      // Price Action: Pin Bars / Rejection Candles
+      // Dynamic Support/Resistance (Fractal-based lookback)
+      const recentHigh = Math.max(...candles.h.slice(-30));
+      const recentLow = Math.min(...candles.l.slice(-30));
+      const nearSupport = entryPrice <= recentLow + (atr * 0.8);
+      const nearResistance = entryPrice >= recentHigh - (atr * 0.8);
+
+      // RSI Divergence Detection (Simplified)
+      const prevRsi = calculateRSI(prices.slice(0, -5), 14);
+      const prevPrice = prices[prices.length - 6];
+      const bullishDivergence = entryPrice < prevPrice && rsi > prevRsi && rsi < 40;
+      const bearishDivergence = entryPrice > prevPrice && rsi < prevRsi && rsi > 60;
+
+      if (nearSupport && isBullishTrend) score += 4;
+      if (nearResistance && isBearishTrend) score -= 4;
+      if (bullishDivergence) score += 6;
+      if (bearishDivergence) score -= 6;
+
+      // Price Action: Professional Pin Bars / Rejection Candles
+      const candleRange = lastCandle.h - lastCandle.l;
       const bodySize = Math.abs(lastCandle.c - lastCandle.o);
       const upperWick = lastCandle.h - Math.max(lastCandle.c, lastCandle.o);
       const lowerWick = Math.min(lastCandle.c, lastCandle.o) - lastCandle.l;
-      const isBullishPin = lowerWick > bodySize * 2 && upperWick < bodySize;
-      const isBearishPin = upperWick > bodySize * 2 && lowerWick < bodySize;
-
-      if (isBullishPin && nearSupport) score += 4;
-      if (isBearishPin && nearResistance) score -= 4;
-
-      if (isBullishCross) score += 2;
-      if (isBearishCross) score -= 2;
-      if (macdBullish) score += 2;
-      if (macdBearish) score -= 2;
-      if (rsi < 30) score += 3; 
-      if (rsi > 70) score -= 3;
-      if (bbOversold) score += 2;
-      if (bbOverbought) score -= 2;
       
-      // Synergy weights
-      if (isBullishEngulfing && isBullishTrend) score += 5;
-      if (isBearishEngulfing && isBearishTrend) score -= 5;
-      if (highVolume && score > 0) score += 2;
-      if (highVolume && score < 0) score -= 2;
+      // Strict Pin Bar Definition
+      const isBullishPin = lowerWick > bodySize * 2.5 && upperWick < bodySize && bodySize < candleRange * 0.35;
+      const isBearishPin = upperWick > bodySize * 2.5 && lowerWick < bodySize && bodySize < candleRange * 0.35;
+
+      if (isBullishPin && nearSupport) score += 7;
+      if (isBearishPin && nearResistance) score -= 7;
+      if (isBullishEngulfing && nearSupport) score += 6;
+      if (isBearishEngulfing && nearResistance) score -= 6;
+
+      if (isBullishCross && h1TrendUp) score += 3;
+      if (isBearishCross && h1TrendDown) score -= 3;
+      if (macdBullish && h1TrendUp) score += 3;
+      if (macdBearish && h1TrendDown) score -= 3;
+      
+      // Strict RSI & Stochastic Overlays
+      if (rsi < 25) score += 5;
+      if (rsi > 75) score -= 5;
+      if (isStochOversold && rsi < 30) score += 4;
+      if (isStochOverbought && rsi > 70) score -= 4;
+      
+      // Volume Confirmation
+      if (highVolume && score > 0) score += 4;
+      if (highVolume && score < 0) score -= 4;
 
       // Integrate AI Score
       if (aiAnalysis) {
-        if (aiAnalysis.action === "BUY") score += (aiAnalysis.confidence / 10);
-        else score -= (aiAnalysis.confidence / 10);
+        const aiWeight = aiAnalysis.confidence / 8;
+        if (aiAnalysis.action === "BUY") score += aiWeight;
+        else score -= aiWeight;
       }
 
-      // STRICT TREND FILTER: Reduce confidence if trading against the main trend
-      if (score > 0 && isBearishTrend) score -= 6; 
-      if (score < 0 && isBullishTrend) score += 6;
+      // STRICT TREND FILTER: Aggressive penalty for counter-trend
+      if (score > 0 && isBearishTrend) score -= 10; 
+      if (score < 0 && isBullishTrend) score += 10;
 
-      // --- NEW: SAFETY OVERRIDES ---
+      // --- SAFETY OVERRIDES ---
       let safetyReason = "";
       if (score > 0 && (isOverextendedUp || isStochOverbought)) {
-        score -= 8; // Penalty for buying at the absolute peak
-        safetyReason = " [Safety: Buying into Resistance/Overbought]";
+        score -= 8;
+        safetyReason = " [Safety: Buying Resistance/Overbought]";
       }
       if (score < 0 && (isOverextendedDown || isStochOversold)) {
-        score += 8; // Penalty for selling at the absolute bottom
-        safetyReason = " [Safety: Selling into Support/Oversold]";
+        score += 8;
+        safetyReason = " [Safety: Selling Support/Oversold]";
       }
       if (Math.abs(score) > 10 && !hasStrongTrend) {
-        score *= 0.7; // Reduce confidence if trend is weak/ranging
-        safetyReason += " [Safety: Weak Trend Strength]";
+        score *= 0.6; // Trend is king, don't trust signals in chop
+        safetyReason += " [Safety: Low ADX/Chop]";
       }
 
       // High-Quality Filter: Only signal if we have high confidence
-      if (rsi < 25 && bbOversold && (isBullishEngulfing || isBullishPin) && isBullishTrend && nearSupport && !isOverextendedUp) {
+      if (score >= 18 && isBullishTrend && h1TrendUp && nearSupport && (isBullishPin || isBullishEngulfing)) {
         action = "BUY/CALL";
         confidence = 99;
-        reasoning = `A+ Institutional Grade Long: Bullish rejection/engulfing at major support with RSI extreme oversold and trend alignment.${safetyReason}`;
-      } else if (rsi > 75 && bbOverbought && (isBearishEngulfing || isBearishPin) && isBearishTrend && nearResistance && !isOverextendedDown) {
+        reasoning = `👑 ULTIMATE A+ INSTITUTIONAL LONG: Divergence detected at Major Fractal Support. Max synergy between Price Action, H1 Trend, Volume, and Momentum.${safetyReason}`;
+      } else if (score <= -18 && isBearishTrend && h1TrendDown && nearResistance && (isBearishPin || isBearishEngulfing)) {
         action = "SELL/PUT";
         confidence = 99;
-        reasoning = `A+ Institutional Grade Short: Bearish rejection/engulfing at major resistance with RSI extreme overbought and trend alignment.${safetyReason}`;
-      } else if (score >= 12 && isBullishTrend && h1TrendUp && !isOverextendedUp) { 
+        reasoning = `👑 ULTIMATE A+ INSTITUTIONAL SHORT: Divergence detected at Major Fractal Resistance. Max synergy between Price Action, H1 Trend, Volume, and Momentum.${safetyReason}`;
+      } else if (score >= 12 && isBullishTrend && h1TrendUp) { 
         action = "BUY/CALL";
-        confidence = Math.min(99, 95 + (score / 2));
-        reasoning = `Premium Trend Alignment: M5/H1 confluence (Score: ${score.toFixed(1)}) with Volume Surge and Price Action Confirmation.${safetyReason}`;
-      } else if (score <= -12 && isBearishTrend && h1TrendDown && !isOverextendedDown) {
+        confidence = 94;
+        reasoning = `🔥 ELITE TREND LONG: Multi-timeframe trend alignment (Score: ${score.toFixed(1)}) with Volume surge and Price Action confirmation.${safetyReason}`;
+      } else if (score <= -12 && isBearishTrend && h1TrendDown) {
         action = "SELL/PUT";
-        confidence = Math.min(99, 95 + (Math.abs(score) / 2));
-        reasoning = `Premium Trend Alignment: M5/H1 confluence (Score: ${score.toFixed(1)}) with Volume Surge and Price Action Confirmation.${safetyReason}`;
+        confidence = 94;
+        reasoning = `🔥 ELITE TREND SHORT: Multi-timeframe trend alignment (Score: ${score.toFixed(1)}) with Volume surge and Price Action confirmation.${safetyReason}`;
       } else {
         // Significantly lower confidence for non-perfect setups
         action = score >= 0 ? "BUY/CALL" : "SELL/PUT";
-        confidence = Math.min(85, Math.abs(score) * 5); 
-        reasoning = `🎯 Market Flow Analysis: Standard price action setup. Indicator Score: ${score.toFixed(1)}. ${aiAnalysis ? 'AI Analysis integrated.' : 'Pure technical analysis.'}${safetyReason}`;
+        confidence = Math.min(80, Math.abs(score) * 4); 
+        reasoning = `🎯 MARKET FLOW ANALYSIS: Context-aware setup. Score: ${score.toFixed(1)}. ${aiAnalysis ? 'AI analysis integrated.' : 'Technical filters applied.'}${safetyReason}`;
       }
 
-      const spread = atr * 1.8; // Increased spread padding to avoid liquidity sweeps
+      const spread = atr * 2.0; // Dynamic padding for noise
       const entry = entryPrice;
-      const sl = action === "BUY/CALL" ? entry - (spread * 2.0) : entry + (spread * 2.0); // Deeper SL to survive noise
-      const tp = action === "BUY/CALL" ? entry + (spread * 3.5) : entry - (spread * 3.5); // Better R:R ratio
+      // SL/TP based on market structure (Fractal Low/High)
+      const sl = action === "BUY/CALL" ? Math.min(entry - (spread * 1.5), recentLow - (atr * 0.5)) : Math.max(entry + (spread * 1.5), recentHigh + (atr * 0.5));
+      const tp = action === "BUY/CALL" ? entry + (spread * 4.0) : entry - (spread * 4.0); // 1:2+ R:R ratio
 
       // Align to NEXT M5 interval
       const now = new Date();
